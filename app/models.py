@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
 
 CATEGORIA_CHOICES = [
@@ -87,7 +88,15 @@ class RegistroTiempo(models.Model):
         related_name='tiempos'
     )
     
+    # Keep a single integer field for total milliseconds (used for ordering/search)
     tiempo = models.BigIntegerField(help_text="Tiempo en milisegundos")
+
+    # New, more granular fields
+    horas = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+    minutos = models.PositiveSmallIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(59)])
+    segundos = models.PositiveSmallIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(59)])
+    milisegundos = models.PositiveSmallIntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(999)])
+
     timestamp = models.DateTimeField(default=timezone.now)
     
     @property
@@ -106,3 +115,36 @@ class RegistroTiempo(models.Model):
         
     def __str__(self):
         return f"Registro {self.id_registro} - Equipo: {self.equipo.nombre} - Tiempo: {self.tiempo} ms"
+
+    def save(self, *args, **kwargs):
+        """
+        Keep `tiempo` (total milliseconds) consistent with the granular fields.
+
+        - If any of the granular fields are non-zero, compute `tiempo` from them.
+        - Otherwise, if all granular fields are zero and `tiempo` is present, derive the granular
+          fields from `tiempo` so existing records are preserved.
+        """
+        try:
+            any_component = any([self.horas, self.minutos, self.segundos, self.milisegundos])
+        except Exception:
+            # In migrations or when fields aren't available yet, defer to default save
+            return super().save(*args, **kwargs)
+
+        if any_component:
+            total_ms = ((int(self.horas) * 3600 + int(self.minutos) * 60 + int(self.segundos)) * 1000) + int(self.milisegundos)
+            self.tiempo = int(total_ms)
+        else:
+            # derive components from existing tiempo
+            total = int(self.tiempo or 0)
+            ms = total % 1000
+            total_seconds = total // 1000
+            s = total_seconds % 60
+            total_minutes = total_seconds // 60
+            m = total_minutes % 60
+            h = total_minutes // 60
+            self.horas = h
+            self.minutos = m
+            self.segundos = s
+            self.milisegundos = ms
+
+        return super().save(*args, **kwargs)
