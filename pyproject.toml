@@ -13,6 +13,7 @@ dependencies = [
     "djangorestframework-simplejwt>=2.8.0",
     "daphne>=4.0.0",
     "websockets>=11.0.3",
+    "whitenoise>=6.11.0",
 ]
 
 [project.optional-dependencies]
@@ -21,3 +22,14 @@ dev = [
     "pytest-django",
     "coverage",
 ]
+
+[tool.uv]
+dev-dependencies = []
+
+[project.scripts]
+serve = "daphne:main"
+
+[tool.daphne]
+bind = "127.0.0.1"
+port = 8000
+application = "server.asgi:application"

@@ -55,9 +55,28 @@ class LoginView(APIView):
         refresh['juez_id'] = juez.id
         refresh['username'] = juez.username
         
+        # Datos del juez para respuesta
+        juez_data = {
+            'id': juez.id,
+            'username': juez.username,
+            'email': juez.email,
+            'first_name': juez.first_name,
+            'last_name': juez.last_name,
+            'competencia': {
+                'id': juez.competencia.id,
+                'nombre': juez.competencia.nombre,
+                'fecha_hora': juez.competencia.fecha_hora.isoformat(),
+                'en_curso': juez.competencia.en_curso,
+                'activa': juez.competencia.activa,
+            },
+            'activo': juez.activo,
+            'telefono': juez.telefono,
+        }
+        
         return Response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
+            'juez': juez_data,
             'message': 'Login exitoso'
         }, status=status.HTTP_200_OK)
 

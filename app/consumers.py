@@ -64,9 +64,122 @@ class JuezConsumer(AsyncJsonWebsocketConsumer):
             pass
 
     async def receive_json(self, content, **kwargs):
-        # Optionally handle messages from client
-        # For now, ignore or echo
-        await self.send_json({'received': content})
+        """
+        Maneja mensajes JSON del cliente.
+        
+        Mensajes soportados:
+        1. registrar_tiempo: Registra el tiempo de llegada de un equipo
+        """
+        tipo = content.get('tipo')
+        
+        if tipo == 'registrar_tiempo':
+            await self.manejar_registro_tiempo(content)
+        else:
+            # Mensaje no reconocido
+            await self.send_json({
+                'tipo': 'error',
+                'mensaje': f'Tipo de mensaje no reconocido: {tipo}'
+            })
+    
+    async def manejar_registro_tiempo(self, content):
+        """
+        Registra el tiempo de un equipo.
+        
+        Esperado en content:
+        {
+            "tipo": "registrar_tiempo",
+            "equipo_id": 1,
+            "tiempo": 1234567,  # milisegundos totales
+            "horas": 0,
+            "minutos": 20,
+            "segundos": 34,
+            "milisegundos": 567
+        }
+        """
+        try:
+            equipo_id = content.get('equipo_id')
+            tiempo = content.get('tiempo')
+            horas = content.get('horas', 0)
+            minutos = content.get('minutos', 0)
+            segundos = content.get('segundos', 0)
+            milisegundos = content.get('milisegundos', 0)
+            
+            # Validar que se enviaron todos los datos
+            if equipo_id is None or tiempo is None:
+                await self.send_json({
+                    'tipo': 'error',
+                    'mensaje': 'Faltan datos requeridos: equipo_id y tiempo son obligatorios'
+                })
+                return
+            
+            # Registrar el tiempo en la base de datos
+            registro = await self.guardar_registro_tiempo(
+                equipo_id=equipo_id,
+                tiempo=tiempo,
+                horas=horas,
+                minutos=minutos,
+                segundos=segundos,
+                milisegundos=milisegundos
+            )
+            
+            if registro:
+                # Enviar confirmación al cliente
+                await self.send_json({
+                    'tipo': 'tiempo_registrado',
+                    'registro': {
+                        'id_registro': str(registro.id_registro),
+                        'equipo_id': registro.equipo_id,
+                        'equipo_nombre': registro.equipo.nombre,
+                        'equipo_dorsal': registro.equipo.dorsal,
+                        'tiempo': registro.tiempo,
+                        'horas': registro.horas,
+                        'minutos': registro.minutos,
+                        'segundos': registro.segundos,
+                        'milisegundos': registro.milisegundos,
+                        'timestamp': registro.timestamp.isoformat()
+                    }
+                })
+            
+        except Exception as e:
+            await self.send_json({
+                'tipo': 'error',
+                'mensaje': f'Error al registrar tiempo: {str(e)}'
+            })
+    
+    @database_sync_to_async
+    def guardar_registro_tiempo(self, equipo_id, tiempo, horas, minutos, segundos, milisegundos):
+        """
+        Guarda el registro de tiempo en la base de datos.
+        Valida que el equipo pertenezca al juez autenticado.
+        """
+        from .models import Equipo, RegistroTiempo
+        
+        try:
+            # Verificar que el equipo existe
+            equipo = Equipo.objects.get(id=equipo_id)
+            
+            # Verificar que el equipo pertenece a este juez
+            if equipo.juez_asignado_id != self.juez.id:
+                raise ValueError(
+                    f'El equipo con ID {equipo_id} no pertenece a tu lista de equipos asignados'
+                )
+            
+            # Crear el registro de tiempo
+            registro = RegistroTiempo.objects.create(
+                equipo=equipo,
+                tiempo=tiempo,
+                horas=horas,
+                minutos=minutos,
+                segundos=segundos,
+                milisegundos=milisegundos
+            )
+            
+            return registro
+            
+        except Equipo.DoesNotExist:
+            raise ValueError(f'El equipo con ID {equipo_id} no existe')
+        except Exception as e:
+            raise Exception(f'Error al guardar registro: {str(e)}')
 
     async def carrera_iniciada(self, event):
         await self.send_json({
