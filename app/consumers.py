@@ -4,11 +4,26 @@ from channels.db import database_sync_to_async
 
 
 @database_sync_to_async
-def get_user_from_token(token):
-    from rest_framework_simplejwt.authentication import JWTAuthentication
-    auth = JWTAuthentication()
-    validated = auth.get_validated_token(token)
-    return auth.get_user(validated)
+def get_juez_from_token(token):
+    """
+    Valida el token JWT y retorna el juez.
+    """
+    from rest_framework_simplejwt.tokens import AccessToken
+    from .models import Juez
+    
+    try:
+        # Validar el token
+        access_token = AccessToken(token)
+        juez_id = access_token.get('juez_id')
+        
+        if not juez_id:
+            return None
+        
+        # Obtener el juez
+        juez = Juez.objects.get(id=juez_id, activo=True)
+        return juez
+    except Exception:
+        return None
 
 
 class JuezConsumer(AsyncJsonWebsocketConsumer):
@@ -22,20 +37,19 @@ class JuezConsumer(AsyncJsonWebsocketConsumer):
             return
 
         try:
-            user = await get_user_from_token(token)
+            juez = await get_juez_from_token(token)
+            if not juez:
+                await self.close()
+                return
         except Exception:
             await self.close()
             return
 
-        self.user = user
+        self.juez = juez
 
-        # Validate that user has juez_profile
-        if not hasattr(self.user, 'juez_profile'):
-            await self.close()
-            return
-
+        # Verificar que el juez_id de la URL coincida con el juez autenticado
         self.juez_id = str(self.scope['url_route']['kwargs'].get('juez_id'))
-        if str(self.user.juez_profile.id) != self.juez_id:
+        if str(self.juez.id) != self.juez_id:
             await self.close()
             return
 
