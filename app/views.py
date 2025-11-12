@@ -1,11 +1,11 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
-from .serializers import EnvioTiemposSerializer
-from .models import Equipo, RegistroTiempo, Juez
+from .serializers import EnvioTiemposSerializer, CompetenciaSerializer, EquipoSerializer
+from .models import Equipo, RegistroTiempo, Juez, Competencia
 
 
 
@@ -174,3 +174,82 @@ class EnviarTiemposView(APIView):
             )
             created.append(str(rt.id_registro))
         return Response({'created': created}, status=status.HTTP_201_CREATED)
+
+
+# ============================================
+# VIEWSETS PARA COMPETENCIAS Y EQUIPOS
+# ============================================
+
+class CompetenciaViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet para Competencias (solo lectura)
+    
+    Endpoints automáticos:
+    - GET /api/competencias/          -> Lista todas las competencias
+    - GET /api/competencias/{id}/     -> Detalle de una competencia
+    
+    Filtros disponibles via query params:
+    - ?activa=true/false
+    - ?en_curso=true/false
+    """
+    queryset = Competencia.objects.all().order_by('-fecha_hora')
+    serializer_class = CompetenciaSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """
+        Permite filtrar competencias por activa y en_curso
+        """
+        queryset = super().get_queryset()
+        
+        # Filtro por activa
+        activa = self.request.query_params.get('activa')
+        if activa is not None:
+            activa_bool = activa.lower() == 'true'
+            queryset = queryset.filter(activa=activa_bool)
+        
+        # Filtro por en_curso
+        en_curso = self.request.query_params.get('en_curso')
+        if en_curso is not None:
+            en_curso_bool = en_curso.lower() == 'true'
+            queryset = queryset.filter(en_curso=en_curso_bool)
+        
+        return queryset
+
+
+class EquipoViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet para Equipos (solo lectura)
+    
+    Endpoints automáticos:
+    - GET /api/equipos/          -> Lista todos los equipos
+    - GET /api/equipos/{id}/     -> Detalle de un equipo
+    
+    Filtros disponibles via query params:
+    - ?competencia_id={id}
+    - ?juez_id={id}
+    """
+    queryset = Equipo.objects.select_related(
+        'juez_asignado',
+        'juez_asignado__competencia'
+    ).all().order_by('dorsal')
+    serializer_class = EquipoSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """
+        Permite filtrar equipos por competencia_id y juez_id
+        """
+        queryset = super().get_queryset()
+        
+        # Filtro por competencia
+        competencia_id = self.request.query_params.get('competencia_id')
+        if competencia_id:
+            queryset = queryset.filter(juez_asignado__competencia_id=competencia_id)
+        
+        # Filtro por juez
+        juez_id = self.request.query_params.get('juez_id')
+        if juez_id:
+            queryset = queryset.filter(juez_asignado_id=juez_id)
+        
+        return queryset
