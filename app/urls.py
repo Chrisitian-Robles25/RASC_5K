@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     LoginView,
     LogoutView,
+    MeView,
     RefreshTokenView,
     EnviarTiemposView,
     CompetenciaViewSet,
@@ -18,6 +19,7 @@ urlpatterns = [
     # Autenticación
     path('login/', LoginView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
+    path('me/', MeView.as_view(), name='me'),
     path('token/refresh/', RefreshTokenView.as_view(), name='token_refresh'),
     
     # Tiempos

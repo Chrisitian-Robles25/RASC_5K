@@ -30,8 +30,8 @@ class CompetenciaSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'fecha_inicio', 'fecha_fin']
 
 
-class JuezSimpleSerializer(serializers.ModelSerializer):
-    """Serializer simple para Juez (sin datos sensibles)"""
+class JuezMeSerializer(serializers.ModelSerializer):
+    """Serializer para el endpoint /me - Solo información personal del juez autenticado"""
     
     full_name = serializers.SerializerMethodField()
     
@@ -39,7 +39,6 @@ class JuezSimpleSerializer(serializers.ModelSerializer):
         model = Juez
         fields = [
             'id',
-            'username',
             'first_name',
             'last_name',
             'full_name',

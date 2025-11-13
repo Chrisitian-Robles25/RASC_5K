@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status, viewsets
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
-from .serializers import EnvioTiemposSerializer, CompetenciaSerializer, EquipoSerializer
+from .serializers import EnvioTiemposSerializer, CompetenciaSerializer, EquipoSerializer, JuezMeSerializer
 from .models import Equipo, RegistroTiempo, Juez, Competencia
 
 
@@ -111,6 +111,23 @@ class LogoutView(APIView):
                 {'error': f'Error al cerrar sesión: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class MeView(APIView):
+    """
+    GET: Obtener información del juez autenticado
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """
+        Retorna la información personal del juez que ha iniciado sesión.
+        No incluye credenciales (username, password) ni información de la competencia.
+        """
+        juez = request.user
+        serializer = JuezMeSerializer(juez)
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class RefreshTokenView(APIView):
