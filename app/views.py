@@ -62,7 +62,7 @@ class LoginView(APIView):
 
         # Buscar el juez por username
         try:
-            juez = Juez.objects.select_related('competencia').get(username=username)
+           juez = Juez.objects.get(username__iexact=username)
         except Juez.DoesNotExist:
             return Response(
                 {'error': 'Credenciales inválidas.'},
@@ -190,10 +190,6 @@ class RefreshTokenView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
-# ============================================
-# VIEWSETS PARA COMPETENCIAS Y EQUIPOS
-# ============================================
 
 class CompetenciaViewSet(viewsets.ReadOnlyModelViewSet):
     """
