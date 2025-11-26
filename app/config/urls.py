@@ -7,6 +7,7 @@ from app.views import (
     RefreshTokenView,
     CompetenciaViewSet,
     EquipoViewSet,
+    EstadoCompetenciaAdminView,
 )
 
 # Router de DRF para ViewSets
@@ -20,6 +21,9 @@ urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     path('me/', MeView.as_view(), name='me'),
     path('token/refresh/', RefreshTokenView.as_view(), name='token_refresh'),
+    
+    # Endpoint público para admin (sin autenticación)
+    path('admin/estado-competencias/', EstadoCompetenciaAdminView.as_view(), name='admin_estado_competencias'),
     
     # Incluir rutas del router (Competencias y Equipos)
     path('', include(router.urls)),

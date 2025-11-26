@@ -78,6 +78,9 @@ class CompetenciaAdmin(admin.ModelAdmin):
     readonly_fields = ['started_at', 'finished_at']
     list_per_page = 25
     actions = ['iniciar_competencia', 'detener_competencia']
+    
+    # Template personalizado para incluir cronómetro
+    change_list_template = 'admin/app/competencia/change_list.html'
 
     fieldsets = (
         ('Información General', {
@@ -99,6 +102,41 @@ class CompetenciaAdmin(admin.ModelAdmin):
         # Suma registros de todos los equipos en esta competencia
         return RegistroTiempo.objects.filter(team__competition=obj).count()
     total_registros.short_description = 'Registros de Tiempo'
+
+    def get_status_display(self, obj):
+        """Muestra el estado con cronómetro inline si está en curso"""
+        if obj.is_running:
+            # Incluir cronómetro inline cuando está en curso
+            started_at_iso = obj.started_at.isoformat() if obj.started_at else ''
+            return format_html(
+                '<div style="display: flex; align-items: center; gap: 10px;">'
+                '<span style="padding: 6px 12px; background-color: #28a745; color: white; '
+                'border-radius: 20px; font-weight: bold; font-size: 11px; '
+                'text-transform: uppercase; letter-spacing: 0.5px;">'
+                '🏁 EN CURSO</span>'
+                '<span class="cronometro-inline" data-started-at="{}" '
+                'style="font-family: \'Courier New\', monospace; font-size: 16px; '
+                'font-weight: bold; color: #28a745; background: #f0f0f0; padding: 4px 10px; '
+                'border-radius: 5px; min-width: 100px; text-align: center;">00:00:00</span>'
+                '</div>',
+                started_at_iso
+            )
+        elif obj.finished_at:
+            return format_html(
+                '<span style="padding: 6px 12px; background-color: #6c757d; color: white; '
+                'border-radius: 20px; font-weight: bold; font-size: 11px; '
+                'text-transform: uppercase; letter-spacing: 0.5px;">'
+                '⏹️ FINALIZADA</span>'
+            )
+        else:
+            return format_html(
+                '<span style="padding: 6px 12px; background-color: #ffc107; color: #000; '
+                'border-radius: 20px; font-weight: bold; font-size: 11px; '
+                'text-transform: uppercase; letter-spacing: 0.5px;">'
+                '🕒 PROGRAMADA</span>'
+            )
+    
+    get_status_display.short_description = 'Estado'
 
     def acciones_competencia(self, obj):
         """Muestra botones de acción para iniciar/detener la competencia"""
