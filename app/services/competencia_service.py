@@ -49,6 +49,14 @@ class CompetenciaService:
                     'error': 'La competencia no está activa'
                 }
             
+            # Verificar si hay otra competencia en curso
+            otra_en_curso = Competencia.objects.filter(is_running=True).exclude(id=competencia_id).first()
+            if otra_en_curso:
+                return {
+                    'exito': False,
+                    'error': f'No se puede iniciar. La competencia "{otra_en_curso.name}" ya está en curso. Primero debes detenerla.'
+                }
+            
             # Iniciar competencia
             competencia.is_running = True
             competencia.started_at = timezone.now()

@@ -1,5 +1,8 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.urls import path
+from django.shortcuts import redirect
+from django.contrib import messages
 from app.models import Competencia, Juez, Equipo, RegistroTiempo, ResultadoEquipo
 
 # ======= FILTROS PERSONALIZADOS =======
@@ -68,11 +71,13 @@ class CompetenciaAdmin(admin.ModelAdmin):
         'total_equipos',
         'total_registros',
         'is_active',
+        'acciones_competencia',
     ]
     list_filter = [EstadoCompetenciaFilter, 'category', 'is_active']
     search_fields = ['name']
     readonly_fields = ['started_at', 'finished_at']
     list_per_page = 25
+    actions = ['iniciar_competencia', 'detener_competencia']
 
     fieldsets = (
         ('Información General', {
@@ -94,6 +99,134 @@ class CompetenciaAdmin(admin.ModelAdmin):
         # Suma registros de todos los equipos en esta competencia
         return RegistroTiempo.objects.filter(team__competition=obj).count()
     total_registros.short_description = 'Registros de Tiempo'
+
+    def acciones_competencia(self, obj):
+        """Muestra botones de acción para iniciar/detener la competencia"""
+        from django.urls import reverse
+        from django.utils.html import format_html
+        
+        if obj.is_running:
+            # Botón para detener (rojo)
+            url = reverse('admin:app_competencia_detener', args=[obj.pk])
+            return format_html(
+                '<a class="button" href="{}" onclick="return confirm(\'¿Estás seguro de detener esta competencia?\');" '
+                'style="background-color: #dc3545; color: white; padding: 6px 12px; '
+                'text-decoration: none; border-radius: 4px; font-size: 12px; font-weight: bold; '
+                'display: inline-block; border: none; cursor: pointer;">'
+                '⏹️ Detener</a>',
+                url
+            )
+        else:
+            # Botón para iniciar (verde)
+            url = reverse('admin:app_competencia_iniciar', args=[obj.pk])
+            return format_html(
+                '<a class="button" href="{}" onclick="return confirm(\'¿Iniciar la competencia {}?\');" '
+                'style="background-color: #28a745; color: white; padding: 6px 12px; '
+                'text-decoration: none; border-radius: 4px; font-size: 12px; font-weight: bold; '
+                'display: inline-block; border: none; cursor: pointer;">'
+                '🟢 Iniciar</a>',
+                url, obj.name
+            )
+    
+    acciones_competencia.short_description = 'Acciones'
+    acciones_competencia.allow_tags = True
+
+    def iniciar_competencia(self, request, queryset):
+        """Acción personalizada para iniciar competencia (solo una a la vez)"""
+        if queryset.count() > 1:
+            self.message_user(request, "⚠️ Solo puedes iniciar una competencia a la vez", level='error')
+            return
+        
+        competencia = queryset.first()
+        resultado = competencia.start()
+        
+        if resultado['success']:
+            self.message_user(request, f"✅ Competencia '{competencia.name}' iniciada correctamente.")
+        elif resultado['message'] == 'already_running':
+            self.message_user(
+                request, 
+                f"⚠️ La competencia '{competencia.name}' ya está en curso", 
+                level='warning'
+            )
+        elif resultado['message'] == 'another_running':
+            otra = resultado['competencia']
+            self.message_user(
+                request,
+                f"❌ No se puede iniciar '{competencia.name}'. La competencia '{otra.name}' ya está en curso. "
+                f"Primero debes detener la competencia activa desde el administrador.",
+                level='error'
+            )
+    
+    iniciar_competencia.short_description = "🟢 Iniciar competencia seleccionada"
+
+    def detener_competencia(self, request, queryset):
+        """Acción personalizada para detener competencia"""
+        count = 0
+        for competencia in queryset:
+            resultado = competencia.stop()
+            if resultado['success']:
+                count += 1
+        
+        if count > 0:
+            self.message_user(request, f"✅ {count} competencia(s) detenida(s) correctamente")
+        else:
+            self.message_user(request, "⚠️ Las competencias seleccionadas no estaban en curso", level='warning')
+    
+    detener_competencia.short_description = "⏹️ Detener competencia(s) seleccionada(s)"
+
+    def get_urls(self):
+        """Agrega URLs personalizadas para los botones de acción"""
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:competencia_id>/iniciar/',
+                self.admin_site.admin_view(self.iniciar_competencia_view),
+                name='app_competencia_iniciar',
+            ),
+            path(
+                '<int:competencia_id>/detener/',
+                self.admin_site.admin_view(self.detener_competencia_view),
+                name='app_competencia_detener',
+            ),
+        ]
+        return custom_urls + urls
+
+    def iniciar_competencia_view(self, request, competencia_id):
+        """Vista para iniciar una competencia desde el botón"""
+        try:
+            competencia = Competencia.objects.get(pk=competencia_id)
+            resultado = competencia.start()
+            
+            if resultado['success']:
+                messages.success(request, f"✅ Competencia '{competencia.name}' iniciada correctamente.")
+            elif resultado['message'] == 'already_running':
+                messages.warning(request, f"⚠️ La competencia '{competencia.name}' ya está en curso.")
+            elif resultado['message'] == 'another_running':
+                otra = resultado['competencia']
+                messages.error(
+                    request,
+                    f"❌ No se puede iniciar '{competencia.name}'. La competencia '{otra.name}' ya está en curso. "
+                    f"Primero debes detener la competencia activa."
+                )
+        except Competencia.DoesNotExist:
+            messages.error(request, "❌ La competencia no existe.")
+        
+        return redirect('admin:app_competencia_changelist')
+
+    def detener_competencia_view(self, request, competencia_id):
+        """Vista para detener una competencia desde el botón"""
+        try:
+            competencia = Competencia.objects.get(pk=competencia_id)
+            resultado = competencia.stop()
+            
+            if resultado['success']:
+                messages.success(request, f"✅ Competencia '{competencia.name}' detenida correctamente.")
+            else:
+                messages.warning(request, f"⚠️ La competencia '{competencia.name}' no estaba en curso.")
+        except Competencia.DoesNotExist:
+            messages.error(request, "❌ La competencia no existe.")
+        
+        return redirect('admin:app_competencia_changelist')
 
 
 @admin.register(Equipo)

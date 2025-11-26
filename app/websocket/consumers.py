@@ -298,6 +298,9 @@ class JuezConsumer(AsyncJsonWebsocketConsumer):
             # Log de resultado
             logger.info(f"[BATCH] Resultado - Guardados: {resultado['total_guardados']}, Fallidos: {resultado['total_fallidos']}")
             
+            if resultado['total_fallidos'] > 0:
+                logger.warning(f"[BATCH] Detalles de fallos: {resultado['registros_fallidos']}")
+
             # Enviar respuesta con resumen
             await self.send_json({
                 'tipo': 'tiempos_registrados_batch',

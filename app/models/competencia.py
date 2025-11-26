@@ -28,22 +28,34 @@ class Competencia(models.Model):
         return self.name
 
     def start(self):
-        """Inicia la competencia"""
-        if not self.is_running:
-            self.is_running = True
-            self.started_at = timezone.now()
-            self.save()
-            return True
-        return False
+        """Inicia la competencia solo si no hay otra en curso"""
+        if self.is_running:
+            return {'success': False, 'message': 'already_running'}
+        
+        # Verificar si hay otra competencia en curso
+        otra_en_curso = Competencia.objects.filter(is_running=True).exclude(id=self.id).first()
+        if otra_en_curso:
+            return {
+                'success': False, 
+                'message': 'another_running',
+                'competencia': otra_en_curso
+            }
+        
+        # Iniciar esta competencia
+        self.is_running = True
+        self.started_at = timezone.now()
+        self.save()
+        return {'success': True, 'message': 'started'}
 
     def stop(self):
         """Detiene la competencia"""
-        if self.is_running:
-            self.is_running = False
-            self.finished_at = timezone.now()
-            self.save()
-            return True
-        return False
+        if not self.is_running:
+            return {'success': False, 'message': 'not_running'}
+        
+        self.is_running = False
+        self.finished_at = timezone.now()
+        self.save()
+        return {'success': True, 'message': 'stopped'}
 
     def get_status_code(self):
         """Retorna el código de estado de la competencia"""

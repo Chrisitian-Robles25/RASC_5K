@@ -97,7 +97,7 @@ class RegistroService:
                 if num_registros >= self.MAX_REGISTROS_POR_EQUIPO:
                     return {
                         'exito': False,
-                        'error': f'El equipo ya tiene el máximo de {self.MAX_REGISTROS_POR_EQUIPO} registros permitidos'
+                        'error': f'El equipo ya completó sus {self.MAX_REGISTROS_POR_EQUIPO} registros. No se permiten registros adicionales.'
                     }
                 
                 # Crear el registro de tiempo (sin campo competencia, se obtiene via equipo)
@@ -212,6 +212,19 @@ class RegistroService:
                 num_registros_actuales = RegistroTiempo.objects.filter(
                     team=equipo
                 ).count()
+                
+                # Verificar si el equipo ya tiene registros (evitar envíos duplicados)
+                if num_registros_actuales > 0:
+                    return {
+                        'total_enviados': len(registros),
+                        'total_guardados': 0,
+                        'total_fallidos': len(registros),
+                        'registros_guardados': [],
+                        'registros_fallidos': [
+                            {'indice': i, 'error': f'El equipo ya tiene {num_registros_actuales} registros guardados. No se permiten envíos adicionales.'}
+                            for i in range(len(registros))
+                        ]
+                    }
                 
                 # Procesar cada registro
                 for idx, reg in enumerate(registros):
