@@ -118,7 +118,7 @@ if ($migrationCheck) {
     }
 }
 else {
-    Write-Host "   ✅ Base de datos actualizada" -ForegroundColor Green
+    Write-Hos+t "   ✅ Base de datos actualizada" -ForegroundColor Green
 }
 
 Write-Host ""
