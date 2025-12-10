@@ -1,178 +1,184 @@
-# Server5K - Guía de Despliegue en Producción
+# Server5K - Sistema de Competencias 5K
 
 Sistema backend para gestión de competencias 5K con registro de tiempos en tiempo real.
 
 ## Arquitectura
 
--   **Django 5.x** + Django REST Framework (API REST)
+-   **Django 6.0** + Django REST Framework (API REST)
 -   **Django Channels** + Daphne (WebSocket para tiempo real)
 -   **PostgreSQL 16** (Base de datos)
 -   **Redis 7** (Channel layer para WebSocket)
 -   **WhiteNoise** (Archivos estáticos)
 
-## Requisitos del Servidor
-
--   **Docker** y **Docker Compose**
--   **Python 3.13+**
--   **Git**
--   **uv** (recomendado) o **pip**
-
 ---
 
-## 1. Clonar el Repositorio
+## 🐳 Despliegue con Docker Compose
+
+El proyecto se despliega con **3 contenedores**:
+
+| Contenedor          | Imagen             | Puerto | Descripción                  |
+| ------------------- | ------------------ | ------ | ---------------------------- |
+| `server5k-web`      | Build local        | 8000   | Django + Daphne (ASGI)       |
+| `server5k-postgres` | postgres:16-alpine | 5432   | Base de datos PostgreSQL     |
+| `server5k-redis`    | redis:7-alpine     | 6379   | Channel layer para WebSocket |
+
+### Requisitos
+
+-   **Docker** 20.10+
+-   **Docker Compose** 2.0+
+
+### 1. Configurar Variables de Entorno
 
 ```bash
-git clone <URL_DEL_REPOSITORIO>
-cd Server5K
+# Copiar el archivo de ejemplo
+cp .env.docker.example .env
+
+# Editar con tus valores
+nano .env  # o usa tu editor preferido
 ```
 
----
-
-## 2. Configurar Variables de Entorno
-
-Copia el archivo de ejemplo y edítalo con tus valores:
-
-```bash
-cp .env.example .env
-```
-
-Edita `.env` con tus configuraciones:
+**Variables importantes a configurar:**
 
 ```env
-# IMPORTANTE: Genera una nueva SECRET_KEY para producción
-SECRET_KEY=tu_clave_secreta_super_segura
+# Genera una clave segura para producción:
+# python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+SECRET_KEY=tu_clave_secreta_de_50_caracteres
 
-# Configuración de Django
+# En producción, cambia a False
 DEBUG=False
-ALLOWED_HOSTS=midominio.com,api.midominio.com,192.168.0.108
 
-# Base de datos PostgreSQL
-POSTGRES_DB=server5k
-POSTGRES_USER=server5k
-POSTGRES_PASSWORD=tu_password_seguro
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5433
+# Dominios/IPs permitidos (separados por coma)
+ALLOWED_HOSTS=midominio.com,192.168.1.100
 
-# Redis
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-
-# CORS (producción)
-CORS_ALLOWED_ORIGINS=http://midominio.com,http://app.midominio.com
+# Password seguro para PostgreSQL
+POSTGRES_PASSWORD=tu_password_super_seguro
 ```
 
-### Generar SECRET_KEY
+### 2. Iniciar los Contenedores
 
 ```bash
-python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+# Construir y levantar todos los servicios
+docker compose up -d --build
+
+# Ver logs en tiempo real
+docker compose logs -f
+
+# Ver logs de un servicio específico
+docker compose logs -f web
+```
+
+### 3. Crear Superusuario (Primera vez)
+
+```bash
+docker compose exec web python manage.py createsuperuser
+```
+
+### 4. Cargar Datos de Prueba (Opcional)
+
+```bash
+docker compose exec web python manage.py populate_data
+```
+
+### 5. Verificar que todo funciona
+
+-   **API REST**: http://localhost:8000/api/
+-   **Admin Django**: http://localhost:8000/admin/
+-   **Documentación API**: http://localhost:8000/api/docs/
+-   **Health Check**: http://localhost:8000/api/health/
+
+---
+
+## Comandos Útiles
+
+```bash
+# Detener todos los contenedores
+docker compose down
+
+# Detener y eliminar volúmenes (¡BORRA DATOS!)
+docker compose down -v
+
+# Reiniciar un servicio específico
+docker compose restart web
+
+# Ejecutar migraciones manualmente
+docker compose exec web python manage.py migrate
+
+# Acceder al shell de Django
+docker compose exec web python manage.py shell
+
+# Ver estado de los contenedores
+docker compose ps
+
+# Reconstruir solo la imagen web
+docker compose build web
 ```
 
 ---
 
-## 3. Iniciar Servicios con Docker
+## Estructura de Volúmenes
 
-```bash
-docker-compose up -d
-```
-
-Esto iniciará:
-
--   **PostgreSQL** en el puerto 5433
--   **Redis** en el puerto 6379
-
-### Verificar servicios
-
-```bash
-docker-compose ps
-docker-compose logs -f
-```
+| Volumen              | Contenido             |
+| -------------------- | --------------------- |
+| `server5k_pgdata`    | Datos de PostgreSQL   |
+| `server5k_redisdata` | Datos de Redis        |
+| `server5k_static`    | Archivos estáticos    |
+| `server5k_media`     | Archivos subidos      |
+| `server5k_logs`      | Logs de la aplicación |
 
 ---
 
-## 4. Configurar Entorno Python
+## API Endpoints Principales
 
-### Opción A: Con uv (recomendado)
+### Autenticación
 
-```bash
-# Instalar uv si no lo tienes
-pip install uv
+-   `POST /api/login/` - Login de juez
+-   `POST /api/logout/` - Logout
+-   `POST /api/token/refresh/` - Refrescar token JWT
+-   `GET /api/me/` - Información del juez autenticado
 
-# Crear entorno e instalar dependencias
-uv sync
+### Competencias
 
-# Activar entorno
-# Linux/macOS:
-source .venv/bin/activate
-# Windows:
-.\.venv\Scripts\activate
-```
+-   `GET /api/competencias/` - Listar competencias
+-   `GET /api/competencias/{id}/` - Detalle de competencia
 
-### Opción B: Con pip
+### Equipos
 
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .\.venv\Scripts\activate  # Windows
+-   `GET /api/equipos/` - Listar equipos del juez
+-   `GET /api/equipos/{id}/` - Detalle de equipo
 
-pip install -e .
-```
+### Registros de Tiempo
 
----
+-   `POST /api/equipos/{id}/registros/` - Registrar tiempo
+-   `GET /api/equipos/{id}/registros/estado/` - Estado de registros
 
-## 5. Preparar la Aplicación Django
+### WebSocket
 
-```bash
-# Aplicar migraciones
-python manage.py migrate
-
-# Recolectar archivos estáticos
-python manage.py collectstatic --noinput
-
-# (Opcional) Crear superusuario
-python manage.py createsuperuser
-
-# (Opcional) Cargar datos de prueba
-python manage.py populate_data
-```
+-   `ws://host:8000/ws/juez/{juez_id}/` - Conexión WebSocket para tiempo real
 
 ---
 
-## 6. Iniciar el Servidor
+## Producción con HTTPS (Nginx)
 
-### Desarrollo (LAN local)
-
-```bash
-daphne -b 0.0.0.0 -p 8000 server.asgi:application
-```
-
-### Producción con múltiples workers
-
-```bash
-daphne -b 0.0.0.0 -p 8000 --verbosity 1 server.asgi:application
-```
-
-La aplicación estará disponible en: `http://<IP_DEL_SERVIDOR>:8000`
-
----
-
-## 7. (Opcional) Nginx como Reverse Proxy
-
-Para producción robusta, usa Nginx delante de Daphne:
+Para producción con SSL, agrega Nginx como reverse proxy:
 
 ```nginx
-# /etc/nginx/sites-available/server5k
 server {
     listen 80;
     server_name midominio.com;
+    return 301 https://$server_name$request_uri;
+}
 
-    location = /favicon.ico { access_log off; log_not_found off; }
+server {
+    listen 443 ssl http2;
+    server_name midominio.com;
 
-    # Archivos estáticos
+    ssl_certificate /etc/letsencrypt/live/midominio.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/midominio.com/privkey.pem;
+
     location /static/ {
-        alias /ruta/a/Server5K/staticfiles/;
+        alias /var/www/server5k/staticfiles/;
     }
 
-    # WebSocket
     location /ws/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
@@ -181,9 +187,9 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # HTTP
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
@@ -194,105 +200,65 @@ server {
 }
 ```
 
-Habilitar y reiniciar:
+**Nota**: Para habilitar redirección HTTPS en Django, agrega `ENABLE_HTTPS=True` en `.env`.
+
+---
+
+## Desarrollo Local (sin Docker)
+
+Si prefieres desarrollar sin Docker:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/server5k /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
+# Instalar dependencias con uv
+uv sync
+
+# Activar entorno
+source .venv/bin/activate  # Linux/macOS
+.\.venv\Scripts\activate   # Windows
+
+# Iniciar PostgreSQL y Redis con Docker
+docker compose up -d postgres redis
+
+# Aplicar migraciones
+python manage.py migrate
+
+# Iniciar servidor de desarrollo
+daphne -b 127.0.0.1 -p 8000 server.asgi:application
 ```
 
 ---
 
-## 8. (Opcional) Systemd Service
+## Troubleshooting
 
-Para mantener el servidor corriendo como servicio:
-
-```ini
-# /etc/systemd/system/server5k.service
-[Unit]
-Description=Server5K Daphne ASGI Server
-After=network.target docker.service
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/ruta/a/Server5K
-Environment="PATH=/ruta/a/Server5K/.venv/bin"
-EnvironmentFile=/ruta/a/Server5K/.env
-ExecStart=/ruta/a/Server5K/.venv/bin/daphne -b 127.0.0.1 -p 8000 server.asgi:application
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
+### El contenedor web no inicia
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable server5k
-sudo systemctl start server5k
-sudo systemctl status server5k
+# Ver logs detallados
+docker compose logs web
+
+# Verificar que postgres y redis estén healthy
+docker compose ps
 ```
 
----
-
-## Endpoints Principales
-
-| Endpoint              | Descripción                    |
-| --------------------- | ------------------------------ |
-| `/admin/`             | Panel de administración Django |
-| `/api/docs/`          | Documentación Swagger UI       |
-| `/api/redoc/`         | Documentación ReDoc            |
-| `/api/`               | Endpoints de la API REST       |
-| `/ws/juez/<juez_id>/` | WebSocket para jueces          |
-
----
-
-## Comandos Útiles
+### Error de conexión a la base de datos
 
 ```bash
-# Ver logs de Docker
-docker-compose logs -f
+# Verificar que postgres esté corriendo
+docker compose exec postgres pg_isready -U server5k
 
-# Reiniciar servicios
-docker-compose restart
-
-# Backup de base de datos
-docker exec server5k-postgres pg_dump -U server5k server5k > backup.sql
-
-# Restaurar backup
-cat backup.sql | docker exec -i server5k-postgres psql -U server5k server5k
-
-# Verificar WebSocket/Redis
-python manage.py shell
->>> from channels.layers import get_channel_layer
->>> channel_layer = get_channel_layer()
->>> print(channel_layer)
+# Reiniciar postgres
+docker compose restart postgres
 ```
 
----
+### Problemas con migraciones
 
-## Solución de Problemas
-
-### Error de conexión a PostgreSQL
-
--   Verifica que Docker esté corriendo: `docker-compose ps`
--   Verifica las variables de entorno en `.env`
-
-### Error de conexión a Redis
-
--   Verifica el contenedor: `docker exec server5k-redis redis-cli ping`
--   Debe responder `PONG`
-
-### WebSocket no conecta
-
--   Verifica que Daphne esté corriendo
--   Verifica logs: `docker-compose logs redis`
--   Verifica que el token JWT sea válido
+```bash
+# Ejecutar migraciones manualmente
+docker compose exec web python manage.py migrate --noinput
+```
 
 ---
 
 ## Licencia
 
-Proyecto privado - Todos los derechos reservados.
+MIT License

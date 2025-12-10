@@ -1,4 +1,5 @@
 from django.urls import path, include
+from django.http import JsonResponse
 from rest_framework.routers import DefaultRouter
 from app.views import (
     LoginView,
@@ -12,12 +13,21 @@ from app.views import (
     EstadoEquipoRegistrosView,
 )
 
+
+def health_check(request):
+    """Endpoint de health check para Docker/Kubernetes."""
+    return JsonResponse({"status": "ok"})
+
+
 # Router de DRF para ViewSets
 router = DefaultRouter()
 router.register(r'competencias', CompetenciaViewSet, basename='competencia')
 router.register(r'equipos', EquipoViewSet, basename='equipo')
 
 urlpatterns = [
+    # Health check (para Docker)
+    path('health/', health_check, name='health_check'),
+    
     # Autenticación
     path('login/', LoginView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),

@@ -10,20 +10,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # === SEGURIDAD CRÍTICA ===
 # La SECRET_KEY DEBE venir de variables de entorno en producción
-SECRET_KEY = os.getenv('SECRET_KEY')
-if not SECRET_KEY:
-    raise ValueError("SECRET_KEY no está configurada en las variables de entorno")
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-in-production')
 
 # DEBUG debe ser False explícitamente en producción
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
-if DEBUG:
-    import warnings
-    warnings.warn("DEBUG está activado. NO uses esto en producción.", RuntimeWarning)
 
-# ALLOWED_HOSTS - Obligatorio y específico para producción
-_allowed_hosts_env = os.getenv('ALLOWED_HOSTS', '')
-if not _allowed_hosts_env:
-    raise ValueError("ALLOWED_HOSTS no está configurada. Ej: midominio.com,api.midominio.com")
+# ALLOWED_HOSTS - Configurable vía variable de entorno
+_allowed_hosts_env = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1')
 ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()]
 
 
@@ -91,25 +84,33 @@ CHANNEL_LAYERS = {
     },
 }
 
-# === BASE DE DATOS (PostgreSQL OBLIGATORIO) ===
-# SQLite NO está permitido en producción
-if not os.getenv('POSTGRES_DB'):
-    raise ValueError("POSTGRES_DB debe estar configurado para producción")
+# === BASE DE DATOS (PostgreSQL) ===
+# Usa SQLite como fallback para desarrollo si no hay configuración de PostgreSQL
+_postgres_db = os.getenv('POSTGRES_DB')
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB'),
-        'USER': os.getenv('POSTGRES_USER'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
-        'HOST': os.getenv('POSTGRES_HOST'),
-        'PORT': os.getenv('POSTGRES_PORT', '5432'),
-        'CONN_MAX_AGE': 60,
-        'OPTIONS': {
-            'sslmode': os.getenv('POSTGRES_SSLMODE', 'require'),
-        },
+if _postgres_db:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': _postgres_db,
+            'USER': os.getenv('POSTGRES_USER', 'server5k'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
+            'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+            'CONN_MAX_AGE': 60,
+            'OPTIONS': {
+                'sslmode': os.getenv('POSTGRES_SSLMODE', 'prefer'),
+            },
+        }
     }
-}
+else:
+    # Fallback a SQLite para desarrollo local o durante el build de Docker
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # === VALIDACIÓN DE CONTRASEÑAS ===
 AUTH_PASSWORD_VALIDATORS = [
@@ -224,14 +225,22 @@ else:
 
 CORS_ALLOW_CREDENTIALS = True
 
-# === SEGURIDAD HTTPS (OBLIGATORIO) ===
-SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_HSTS_SECONDS = 31536000  # 1 año
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# === SEGURIDAD HTTPS ===
+# Solo habilitar si estamos en producción real (no Docker local)
+_enable_https = os.getenv('ENABLE_HTTPS', 'False').lower() in ('true', '1', 'yes')
+
+if _enable_https:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 año
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+else:
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
 
 # === EMAIL BACKEND (Configuración básica) ===
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -243,6 +252,10 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@server5k.com')
 
 # === LOGGING (Configurado para producción) ===
+# Crear directorio de logs si no existe
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -263,7 +276,7 @@ LOGGING = {
         },
         'file': {
             'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'django.log',
+            'filename': LOGS_DIR / 'django.log',
             'formatter': 'verbose',
         },
     },

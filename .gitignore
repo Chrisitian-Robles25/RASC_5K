@@ -62,7 +62,3 @@ Thumbs.db
 # === Celery (si lo usas) ===
 celerybeat-schedule
 celerybeat.pid
-
-# === Scripts locales de desarrollo ===
-start_server*.ps1
-start_server*.sh

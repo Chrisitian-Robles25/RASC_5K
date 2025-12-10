@@ -1,6 +1,54 @@
-version: '3.8'
+# ============================================================================
+# Docker Compose - Server5K (Producción)
+# ============================================================================
+# Uso:
+#   1. Copia .env.example a .env y configura las variables
+#   2. Ejecuta: docker compose up -d
+#   3. Para ver logs: docker compose logs -f
+#   4. Para detener: docker compose down
+# ============================================================================
 
 services:
+  # ==========================================================================
+  # Servicio Web (Django + Daphne ASGI)
+  # ==========================================================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: server5k-web
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Sobreescribir hosts para que apunten a los servicios Docker
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+      - logs_volume:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             daphne -b 0.0.0.0 -p 8000 server.asgi:application"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================================================
+  # Base de Datos PostgreSQL
+  # ==========================================================================
   postgres:
     image: postgres:16-alpine
     container_name: server5k-postgres
@@ -8,9 +56,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-server5k}
       POSTGRES_USER: ${POSTGRES_USER:-server5k}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-server5k} # Lee desde el .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-server5k_password}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -19,6 +67,9 @@ services:
       timeout: 5s
       retries: 5
 
+  # ==========================================================================
+  # Redis (Channels Layer para WebSocket)
+  # ==========================================================================
   redis:
     image: redis:7-alpine
     container_name: server5k-redis
@@ -27,12 +78,24 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
+    command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+# ============================================================================
+# Volúmenes persistentes
+# ============================================================================
 volumes:
   pgdata:
+    name: server5k_pgdata
   redisdata:
+    name: server5k_redisdata
+  static_volume:
+    name: server5k_static
+  media_volume:
+    name: server5k_media
+  logs_volume:
+    name: server5k_logs
