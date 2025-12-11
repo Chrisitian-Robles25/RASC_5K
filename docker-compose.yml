@@ -8,7 +8,52 @@
 #   4. Para detener: docker compose down
 # ============================================================================
 
+
 services:
+  # ==========================================================================
+  # Base de Datos PostgreSQL (Inicia primero)
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: server5k-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-server5k}
+      POSTGRES_USER: ${POSTGRES_USER:-server5k}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-server5k_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-server5k} -d ${POSTGRES_DB:-server5k}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # ==========================================================================
+  # Redis 
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: server5k-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # ==========================================================================
+  # Aplicación 
+  # ==========================================================================
   web:
     build:
       context: .
@@ -29,22 +74,28 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py collectstatic --noinput &&
              daphne -b 0.0.0.0 -p 8000 server.asgi:application"
 
-  
+
   # ==========================================================================
   # Servidor Nginx
   # ==========================================================================
-
   nginx:
     image: nginx:alpine
     container_name: server5k-nginx
     restart: unless-stopped
     depends_on:
-      - web
+      web:
+        condition: service_healthy
     ports:
       - "${NGINX_ALT_PORT:-80}:443"          
       - "${NGINX_HTTPS_PORT:-443}:443"        
@@ -53,44 +104,6 @@ services:
       - static_volume:/app/staticfiles:ro
       - media_volume:/app/mediafiles:ro
 
-  # ==========================================================================
-  # Base de Datos PostgreSQL
-  # ==========================================================================
-  postgres:
-    image: postgres:16-alpine
-    container_name: server5k-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-server5k}
-      POSTGRES_USER: ${POSTGRES_USER:-server5k}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-server5k_password}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-server5k} -d ${POSTGRES_DB:-server5k}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ==========================================================================
-  # Redis (Channels Layer para WebSocket)
-  # ==========================================================================
-  redis:
-    image: redis:7-alpine
-    container_name: server5k-redis
-    restart: unless-stopped
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redisdata:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
 # ============================================================================
 # Volúmenes persistentes
