@@ -10,7 +10,9 @@
 
 services:
   web:
-    image: axlmd/server5k:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: server5k-web
     restart: unless-stopped
     env_file:

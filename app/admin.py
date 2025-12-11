@@ -125,14 +125,16 @@ class CompetenciaAdmin(admin.ModelAdmin):
                 '<span style="padding: 6px 12px; background-color: #6c757d; color: white; '
                 'border-radius: 20px; font-weight: bold; font-size: 11px; '
                 'text-transform: uppercase; letter-spacing: 0.5px;">'
-                '⏹️ FINALIZADA</span>'
+                '{}</span>',
+                '⏹️ FINALIZADA'
             )
         else:
             return format_html(
                 '<span style="padding: 6px 12px; background-color: #ffc107; color: #000; '
                 'border-radius: 20px; font-weight: bold; font-size: 11px; '
                 'text-transform: uppercase; letter-spacing: 0.5px;">'
-                '🕒 PROGRAMADA</span>'
+                '{}</span>',
+                '🕒 PROGRAMADA'
             )
     
     get_status_display.short_description = 'Estado'
@@ -155,14 +157,21 @@ class CompetenciaAdmin(admin.ModelAdmin):
             )
         else:
             # Botón para iniciar (verde)
+            from django.urls import reverse
+            from django.utils.html import format_html
+            import json
+
             url = reverse('admin:app_competencia_iniciar', args=[obj.pk])
+            # Usar json.dumps para escapar de forma segura el nombre para JavaScript
+            confirm_message = f"¿Iniciar la competencia {json.dumps(obj.name)}?"
+            
             return format_html(
-                '<a class="button" href="{}" onclick="return confirm(\'¿Iniciar la competencia {}?\');" '
+                '<a class="button" href="{}" onclick="return confirm({});" '
                 'style="background-color: #28a745; color: white; padding: 6px 12px; '
                 'text-decoration: none; border-radius: 4px; font-size: 12px; font-weight: bold; '
                 'display: inline-block; border: none; cursor: pointer;">'
                 '🟢 Iniciar</a>',
-                url, obj.name
+                url, confirm_message
             )
     
     acciones_competencia.short_description = 'Acciones'
