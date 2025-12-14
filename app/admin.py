@@ -301,6 +301,24 @@ class JuezAdmin(admin.ModelAdmin):
     list_display = ['username', 'get_full_name', 'email', 'equipos_asignados', 'is_active']
     search_fields = ['username', 'first_name', 'last_name', 'email']
 
+    def save_model(self, request, obj, form, change):
+        """Hash de contraseña automático al crear/editar un juez desde el admin."""
+        from django.contrib.auth.hashers import identify_hasher, make_password
+
+        raw_password = obj.password or ''
+        needs_hash = False
+
+        try:
+            # Si no es un hash válido, lanzará ValueError
+            identify_hasher(raw_password)
+        except Exception:
+            needs_hash = True
+
+        if needs_hash:
+            obj.password = make_password(raw_password)
+
+        super().save_model(request, obj, form, change)
+
     def equipos_asignados(self, obj):
         equipos = obj.teams.all()
         if equipos:
